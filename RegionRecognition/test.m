@@ -1,34 +1,61 @@
-%unzip LogoDet-3K.zip
-%data = load("vehicleDatasetGroundTruth.mat");
-%logoDataset = data.vehicleDataset;");
-%Load files here!
+clear;
+clc;
 
+ds = imageDatastore("C:\Users\brelanre\OneDrive - Rose-Hulman Institute of Technology\Documents\MATLAB\CSSE463\Transportation", ...
+    FileExtensions=[".jpg"], ...
+    IncludeSubfolders=true, ...
+    LabelSource="foldernames");
+nImages = numel(ds.Files);
+images = ds.Files;
+
+ds1 = imageDatastore("C:\Users\brelanre\OneDrive - Rose-Hulman Institute of Technology\Documents\MATLAB\CSSE463\Transportation", ...
+    FileExtensions=[".xml"], ...
+    IncludeSubfolders=true);
+xmls = ds1.Files;
+
+imagepaths = strings(nImages,1);
+bb = {nImages,1};
+for i = 1:nImages
+    imagepaths(i) = string(images(i));
+   
+    name = xmls{i};
+    xml = readstruct(name).object.bndbox;
+    bb(i,:) = {[xml.xmin xml.ymin xml.xmax xml.ymax]};
+end 
+
+bb = bb(:,1)
 %% Generate training, validation, and test sets
 rng("default");
-shuffledIndices = randperm(height(logoDataset));
+shuffledIndices = randperm(nImages);
 idx = floor(0.6 * length(shuffledIndices) );
 
 trainingIdx = 1:idx;
-trainingDataTbl = logoDataset(shuffledIndices(trainingIdx),:);
+trainingData = imagepaths(shuffledIndices(trainingIdx),:);
+trainingbb = table(bb(shuffledIndices(trainingIdx),:));
 
 validationIdx = idx+1 : idx + 1 + floor(0.1 * length(shuffledIndices) );
-validationDataTbl = logoDataset(shuffledIndices(validationIdx),:);
+validationData = imagepaths(shuffledIndices(validationIdx),:);
+validationbb = table(bb(shuffledIndices(validationIdx),:));
 
 testIdx = validationIdx(end)+1 : length(shuffledIndices);
-testDataTbl = logoDataset(shuffledIndices(testIdx),:);
+testData = imagepaths(shuffledIndices(testIdx),:);
+testbb = table(bb(shuffledIndices(testIdx),:));
 
 %% Saving off data
-save('Data.mat' , 'trainingDataTbl', 'validationDataTbl', 'testDataTbl');
+save('RegionData.mat');
+
+%% Load Data
+load("RegionData.mat")
 
 %% Generate datastores
-imgTrain = imageDatastore(trainingDataTbl{:,"imageFilename"});
-boxTrain = boxLabelDatastore(trainingDataTbl(:,"logo"));
+imgTrain = imageDatastore(trainingData);
+boxTrain = boxLabelDatastore(trainingbb);
 
-imgValidation = imageDatastore(validationDataTbl{:,"imageFilename"});
-boxValidation = boxLabelDatastore(validationDataTbl(:,"logo"));
+imgValidation = imageDatastore(validationData);
+boxValidation = boxLabelDatastore(validationbb);
 
-imgTest = imageDatastore(testDataTbl{:,"imageFilename"});
-boxTest = boxLabelDatastore(testDataTbl(:,"logo"));
+imgTest = imageDatastore(testData);
+boxTest = boxLabelDatastore(testbb);
 
 trainingData = combine(imgTrain,boxTrain);
 validationData = combine(imgValidation,boxValidation);
@@ -48,7 +75,7 @@ annotatedImage = imresize(annotatedImage,2);
 figure
 imshow(annotatedImage)
 
-%% Prep network
+%% Prep network and Augment Data
 inputSize = [227 227 3];
 className = "logo";
 rng("default")
@@ -90,6 +117,8 @@ options = trainingOptions("adam",...
     CheckpointPath=tempdir,...
     ValidationData=validationData);
 [detector,info] = trainYOLOv4ObjectDetector(augmentedTrainingData,detector,options);
+
+%% Train the Network
 
 
 
