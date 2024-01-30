@@ -60,9 +60,7 @@ for i = 1:length(subfolders)
     
     % Randomly shuffle the list of files
     perm = randperm(length(imgFiles));
-    imgFiles = imgFiles(perm);
-    xmlFiles = xmlFiles(perm);
-    
+
     % Calculate the number of files for each set
     numFiles = length(imgFiles);
     numTraining = round(trainingPercentage/100 * numFiles);
@@ -70,18 +68,19 @@ for i = 1:length(subfolders)
     numTesting = numFiles - numTraining - numValidation;
     
     % Divide the files into training, validation, and testing sets
-    trainingData = [trainingData; fullfile(subfolder, {imgFiles(1:numTraining).name})'];
+    
     for j = 1:numTraining
+        trainingData = [trainingData; fullfile(subfolder, imgFiles(perm(j)).name)'];
         trainingbb = [trainingbb; getBBox(fullfile(subfolder, xmlFiles(perm(j)).name))'];
     end
 
-    validationData = [validationData; fullfile(subfolder, {imgFiles(numTraining+1:numTraining+numValidation).name})'];
-    for j = numTraining:numTraining+numValidation
+    for j = numTraining+1:numTraining+numValidation
+        validationData = [validationData; fullfile(subfolder, imgFiles(perm(j)).name)'];
         validationbb = [validationbb; getBBox(fullfile(subfolder, xmlFiles(perm(j)).name))'];
     end
 
-    testingData = [testingData; fullfile(subfolder, {imgFiles(numTraining+numValidation+1:end).name})'];
-    for j = numTraining+numValidation:numFiles
+    for j = numTraining+numValidation+1:numFiles
+        testingData = [testingData; fullfile(subfolder, imgFiles(perm(j)).name)'];
         testingbb = [testingbb; getBBox(fullfile(subfolder, xmlFiles(perm(j)).name))'];
     end
 
@@ -89,8 +88,7 @@ for i = 1:length(subfolders)
     disp(['  Training set: ' num2str(numTraining) ' files']);
     disp(['  Validation set: ' num2str(numValidation) ' files']);
     disp(['  Testing set: ' num2str(numTesting) ' files']);
-    disp(perm)
-      
+
 end
 
 %shuffledIndices = randperm(nImages);
