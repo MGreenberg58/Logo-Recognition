@@ -71,25 +71,18 @@ for i = 1:length(subfolders)
     
     % Divide the files into training, validation, and testing sets
     trainingData = [trainingData; fullfile(subfolder, {imgFiles(1:numTraining).name})'];
+    
     for j = 1:numTraining
-        trainingbb = [trainingbb; getBBox(fullfile(subfolder, xmlFiles(perm(j)).name))'];
+        trainingbb = [validationbb; getBBox((fullfile(subfolder, {xmlFiles(numTraining+1:numTraining+numValidation).name})))]
     end
+
+    trainingbb = [trainingbb; {readstruct(fullfile(subfolder, {xmlFiles(numTraining+1:numTraining+numValidation).name})).object.bndbox}'];
 
     validationData = [validationData; fullfile(subfolder, {imgFiles(numTraining+1:numTraining+numValidation).name})'];
-    for j = numTraining:numTraining+numValidation
-        validationbb = [validationbb; getBBox(fullfile(subfolder, xmlFiles(perm(j)).name))'];
-    end
+    validationbb = [validationbb; fullfile(subfolder, {xmlFiles(numTraining+1:numTraining+numValidation).name})']; 
 
     testingData = [testingData; fullfile(subfolder, {imgFiles(numTraining+numValidation+1:end).name})'];
-    for j = numTraining+numValidation:numFiles
-        testingbb = [testingbb; getBBox(fullfile(subfolder, xmlFiles(perm(j)).name))'];
-    end
-
-    disp(['Processing subfolder: ' subfolders(i).name]);
-    disp(['  Training set: ' num2str(numTraining) ' files']);
-    disp(['  Validation set: ' num2str(numValidation) ' files']);
-    disp(['  Testing set: ' num2str(numTesting) ' files']);
-    disp(perm)
+    testingbb = [testingbb; fullfile(subfolder, {xmlFiles(numTraining+numValidation+1:end).name})'];
       
 end
 
@@ -119,10 +112,10 @@ imgTrain = imageDatastore(trainingData);
 boxTrain = boxLabelDatastore(table(trainingbb));
 
 imgValidation = imageDatastore(validationData);
-boxValidation = boxLabelDatastore(table(validationbb));
+boxValidation = boxLabelDatastore(validationbb);
 
 imgTest = imageDatastore(testingData);
-boxTest = boxLabelDatastore(table(testingbb));
+boxTest = boxLabelDatastore(testingbb);
 
 trainingData = combine(imgTrain,boxTrain);
 validationData = combine(imgValidation,boxValidation);
@@ -385,7 +378,7 @@ function box = getBBox(path)
     xmlStruct = readstruct(path);
         
     values = xmlStruct.object.bndbox;
-    box = [values.xmin values.ymin values.xmax values.ymax]';
+    box = [values.xmin values.ymin values.xmax values.ymax];
 end
 
 
