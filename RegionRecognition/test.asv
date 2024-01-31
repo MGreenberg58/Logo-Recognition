@@ -2,11 +2,11 @@ clear;
 clc;
  
 %Rebecca's path
-%filePath = "C:\Users\brelanre\OneDrive - Rose-Hulman Institute of Technology\Documents\MATLAB\CSSE463\Transportation";
+filePath = "C:\Users\brelanre\OneDrive - Rose-Hulman Institute of Technology\Documents\MATLAB\CSSE463\Transportation";
 %Nathan's path
 %filePath = "C:\Users\kingnm\Documents\MATLAB\Image Recognition\Logo-Recognition\RegionRecognition\Transportation";
 %Matthew's path
-filePath = "E:\Logos\LogoDet-3K\Transportation";
+%filePath = "E:\Logos\LogoDet-3K\Transportation";
 
 ds = imageDatastore(filePath, ...
     FileExtensions=[".jpg"], ...
@@ -27,7 +27,11 @@ for i = 1:nImages
    
     name = xmls{i};
     xml = readstruct(name).object.bndbox;
-    bb(i,:) = {[xml.xmin xml.ymin xml.xmax xml.ymax]};
+    xcenter = (xml.xmax + xml.xmin)/2;
+    ycenter = (xml.ymax + xml.ymin)/2;
+    width = xml.xmax - xml.xmin;
+    height = xml.ymax - xml.ymin;
+    bb(i,:) = {[xcenter ycenter width height]};
 end 
 
 bb = bb(:,1);
@@ -60,9 +64,7 @@ for i = 1:length(subfolders)
     
     % Randomly shuffle the list of files
     perm = randperm(length(imgFiles));
-    %imgFiles = imgFiles(perm);
-    %xmlFiles = xmlFiles(perm);
-    
+
     % Calculate the number of files for each set
     numFiles = length(imgFiles);
     numTraining = round(trainingPercentage/100 * numFiles);
@@ -73,7 +75,6 @@ for i = 1:length(subfolders)
     
     for j = 1:numTraining
         trainingData = [trainingData; fullfile(subfolder, imgFiles(perm(j)).name)'];
-        disp(fullfile(subfolder, imgFiles(perm(j)).name)')
         trainingbb = [trainingbb; getBBox(fullfile(subfolder, xmlFiles(perm(j)).name))'];
     end
 
@@ -91,9 +92,7 @@ for i = 1:length(subfolders)
     disp(['  Training set: ' num2str(numTraining) ' files']);
     disp(['  Validation set: ' num2str(numValidation) ' files']);
     disp(['  Testing set: ' num2str(numTesting) ' files']);
-    disp(perm)
-    
-      
+
 end
 
 %shuffledIndices = randperm(nImages);
