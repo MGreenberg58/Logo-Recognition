@@ -153,11 +153,12 @@ featuresValidate = squeeze(mean(activations(net,augimdsValidation,layer),[1 2]))
 save('res4b18features.mat');
 
 %% Checkpoint load
-%load('pool5features.mat')
-
+load('res3b3features.mat')
 
 %% Train multi-class SVM
-classifier = fitcecoc(featuresTrain,trainingLabels);
+classifier = fitcecoc(featuresTrain,trainingLabels,'OptimizeHyperparameters','auto',...
+    'HyperparameterOptimizationOptions',struct('AcquisitionFunctionName',...
+    'expected-improvement-plus'));
 
 YPred = predict(classifier,featuresTest);
 accuracy = mean(YPred == testingLabels)
