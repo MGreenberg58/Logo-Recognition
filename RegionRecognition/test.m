@@ -2,11 +2,11 @@ clear;
 clc;
  
 %Rebecca's path
-%filePath = "C:\Users\brelanre\OneDrive - Rose-Hulman Institute of Technology\Documents\MATLAB\CSSE463\Transportation";
+filePath = "C:\Users\brelanre\OneDrive - Rose-Hulman Institute of Technology\Documents\MATLAB\CSSE463\Transportation";
 %Nathan's path
 %filePath = "C:\Users\kingnm\Documents\MATLAB\Image Recognition\Logo-Recognition\RegionRecognition\Transportation";
 %Matthew's path
-filePath = "E:\Logos\LogoDet-3K\Transportation";
+%filePath = "E:\Logos\LogoDet-3K\Transportation";
 
 ds = imageDatastore(filePath, ...
     FileExtensions=[".jpg"], ...
@@ -27,7 +27,11 @@ for i = 1:nImages
    
     name = xmls{i};
     xml = readstruct(name).object.bndbox;
-    bb(i,:) = {[xml.xmin xml.ymin xml.xmax xml.ymax]};
+    xcenter = (xml.xmax + xml.xmin)/2;
+    ycenter = (xml.ymax + xml.ymin)/2;
+    width = xml.xmax - xml.xmin;
+    height = xml.ymax - xml.ymin;
+    bb(i,:) = {[xcenter ycenter width height]};
 end 
 
 bb = bb(:,1);
@@ -383,7 +387,10 @@ function box = getBBox(path)
     xmlStruct = readstruct(path);
         
     values = xmlStruct.object.bndbox;
-    box = [values.xmin values.ymin values.xmax values.ymax]';
+    width = values.xmax - values.xmin;
+    height = values.ymax - values.ymin;
+
+    box = [values.xmin values.ymin width height]';
 end
 
 
