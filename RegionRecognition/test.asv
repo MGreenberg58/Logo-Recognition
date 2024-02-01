@@ -22,19 +22,51 @@ numTrain = round(0.6 * numFiles);
 numValidation = round(0.1 * numFiles);
 
 % Partition the shuffled files manually
-imDsTrain = imageDatastore(shuffledFiles(1:numTrain), "LabelSource", "foldernames");
-imDsValidation = imageDatastore(shuffledFiles(numTrain+1:numTrain+numValidation), "LabelSource", "foldernames");
-imDsTest = imageDatastore(shuffledFiles(numTrain+numValidation+1:end), "LabelSource", "foldernames");
+imDsTrain = imageDatastore(shuffledFiles(1:numTrain));
+imDsValidation = imageDatastore(shuffledFiles(numTrain+1:numTrain+numValidation));
+imDsTest = imageDatastore(shuffledFiles(numTrain+numValidation+1:end));
 
 bbds = fileDatastore(filePath, "ReadFcn", @readXML, "IncludeSubfolders", true, "FileExtensions", [".xml"]);
 
 bboxes = readall(bbds);
-
 shuffledValues = bboxes(perm);
 
-bbDsTrain = boxLabelDatastore(table(shuffledValues(1:numTrain)));
+trainTable = table(shuffledFiles(1:numTrain), shuffledValues(1:numTrain), "VariableNames", {"filename", "logo"}, "VariableTypes", {"string", "string"});
+bbDsTrain = boxLabelDatastore(trainTable);
+
+imds = imageDatastore(trainingTable.imageFilename);
+blds = boxLabelDatastore(trainingData(:,2:end));
+
+ds = combine(imds,blds);
+inputSize = [224 224 3];
+trainingDataForEstimation = transform(ds,@(data)preprocessData(data,inputSize));
+
+classes = {'logo'};
+detector = yolov4ObjectDetector("tiny-yolov4-coco",classes,anchorBoxes,InputSize=inputSize);
+
+numAnchors = 6;
+[anchors, meanIoU] = estimateAnchorBoxes(trainingDataForEstimation,numAnchors);
+area = anchors(:,1).*anchors(:,2);
+[~,idx] = sort(area,"descend");
+anchors = anchors(idx,:);
+anchorBoxes = {anchors(1:3,:);anchors(4:6,:)};
+
+options = trainingOptions("sgdm", ...
+    InitialLearnRate=0.001, ...
+    MiniBatchSize=16,...
+    MaxEpochs=40, ...
+    BatchNormalizationStatistics="moving",...
+    ResetInputNormalization=false,...
+    VerboseFrequency=30);
+trainedDetector = trainYOLOv4ObjectDetector(ds,detector,options);
+
+validationTable = table(shuffledValues(numTrain+1:numTrain+numValidation));
+validationTable.Properties.VariableNames = {'Logo'};
 bbDsValidation = boxLabelDatastore(table(shuffledValues(numTrain+1:numTrain+numValidation)));
-bbDsTest = boxLabelDatastore(table(shuffledValues(numTrain+numValidation+1:end)));
+
+%testTable = table(shuffledValues(numTrain+numValidation+1:end));
+%testTable.Properties.VariableNames = {'Logo'};
+%bbDsTest = boxLabelDatastore(table(shuffledValues(numTrain+numValidation+1:end)));
 
 
 %% Saving off data
@@ -47,12 +79,12 @@ load("RegionData.mat")
 
 trainingDs = combine(imDsTrain, bbDsTrain);
 validationDs = combine(imDsValidation, bbDsValidation);
-testDs = combine(imDsTest, bbDsTest);
+%testDs = combine(imDsTest, bbDsTest);
 
 %% Validate training set
 validateInputData(trainingDs);
 validateInputData(validationDs);
-validateInputData(testDs);
+%validateInputData(testDs);
 
 %% Display example image
 data = read(trainingDs);
@@ -79,7 +111,8 @@ anchorBoxes = {anchors(1:3,:)
     anchors(4:6,:)
     anchors(7:9,:)
     };
-detector = yolov4ObjectDetector("csp-darknet53-coco",unique(imDsTrain.Labels),anchorBoxes,InputSize=inputSize);
+
+detector = yolov4ObjectDetector("csp-darknet53-coco", {'logo'},anchorBoxes,InputSize=inputSize);
 augmentedTrainingData = transform(trainingDs,@augmentData);
 augmentedData = cell(4,1);
 for k = 1:4
@@ -91,7 +124,7 @@ figure
 
 montage(augmentedData,BorderSize=10)
 
-options = trainingOptions("adam",...
+options = trainingOptions("sgdm",...
     GradientDecayFactor=0.9,...
     SquaredGradientDecayFactor=0.999,...
     InitialLearnRate=0.001,...
@@ -108,9 +141,8 @@ options = trainingOptions("adam",...
     CheckpointPath=tempdir,...
     ValidationData=validationDs);
 
-
 %% Train the Network
-[detector,info] = trainYOLOv4ObjectDetector(augmentedTrainingData,detector,options);
+[detector,info] = trainYOLOv4ObjectDetector(gTruth.DataSource,detector,options);
 
 %% Creates helper functions from example online
 function data = augmentData(A)
@@ -320,18 +352,25 @@ function data = readXML(filename)
     xml = readstruct(filename).object.bndbox;
     %xcenter = (xml.xmax + xml.xmin)/2;
     %ycenter = (xml.ymax + xml.ymin)/2;
-    %width = xml.xmax - xml.xmin;
-    %height = xml.ymax - xml.ymin;
+    width = xml.xmax - xml.xmin;
+    height = xml.ymax - xml.ymin;
 
-    xcenter = 
-
-    data = [xcenter ycenter width height];
+    data = [xml.xmin xml.ymin width height];
 
 end
 
 
+function lowestLevelFolders = getLowestLevelFolders(filePaths)
+    numFiles = numel(filePaths);
+    lowestLevelFolders = cell(1, numFiles);
 
-
+    for i = 1:numFiles
+        [path, ~, ~] = fileparts(filePaths{i});
+        [~, folderName, ~] = fileparts(path)
+        %folderParts = strsplit(folderName, filesep);
+        lowestLevelFolders{i} = folderName;
+    end
+end
 
 
 
