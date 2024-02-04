@@ -13,6 +13,7 @@ imds = imageDatastore(filePath, "FileExtensions", [".jpg"], "IncludeSubfolders",
 numFiles = numel(imds.Files);
 % Generate random permutation indices for shuffling
 perm = randperm(numel(imds.Files));
+%perm = 1:numFiles;
 
 % Shuffle the indices and use them to access the files
 shuffledFiles = imds.Files(perm);
@@ -21,60 +22,42 @@ shuffledFiles = imds.Files(perm);
 numTrain = round(0.6 * numFiles);
 numValidation = round(0.1 * numFiles);
 
-% Partition the shuffled files manually
-imDsTrain = imageDatastore(shuffledFiles(1:numTrain), "LabelSource", "foldernames");
-imDsValidation = imageDatastore(shuffledFiles(numTrain+1:numTrain+numValidation), "LabelSource", "foldernames");
-imDsTest = imageDatastore(shuffledFiles(numTrain+numValidation+1:end), "LabelSource", "foldernames");
-
 bbds = fileDatastore(filePath, "ReadFcn", @readXML, "IncludeSubfolders", true, "FileExtensions", [".xml"]);
 
 bboxes = readall(bbds);
-bbLabels = getLowestLevelFolders(bbds.Files);
+shuffledValues = bboxes(perm); 
 
-shuffledValues = bboxes(perm);
-shuffledLabels = bbLabels(perm)';
+% Training
+filename = shuffledFiles(1:numTrain);
+logo = shuffledValues(1:numTrain);
+trainTable = table(filename, logo);
 
-trainTable = table(shuffledValues(1:numTrain));
+imds = imageDatastore(trainTable.filename);
+blds = boxLabelDatastore(trainTable(:,2:end));
+trainds = combine(imds,blds);
 
-bbDsTrain = boxLabelDatastore(trainTable);
-bbDsValidation = boxLabelDatastore(table(shuffledValues(numTrain+1:numTrain+numValidation)));
-bbDsTest = boxLabelDatastore(table(shuffledValues(numTrain+numValidation+1:end)));
+%Validation
+filename = shuffledFiles(numTrain+1:numTrain+numValidation);
+logo = shuffledValues(numTrain+1:numTrain+numValidation);
+validationTable = table(filename, logo);
 
-%dataSource = groundTruthDataSource(imds.Files);
-%gTruth = groundTruth(dataSource, table(shuffledLabels), table(shuffledValues));
+imds2 = imageDatastore(validationTable.filename);
+blds2 = boxLabelDatastore(validationTable(:,2:end));
+validationds = combine(imds,blds);
 
-%% Saving off data
-save('RegionData.mat');
+% Testing
+filename = shuffledFiles(numTrain+numValidation+1:end);
+logo = shuffledValues(numTrain+numValidation+1:end);
+testingTable = table(filename, logo);
 
-%% Load Data
-load("RegionData.mat")
+imds3 = imageDatastore(testingTable.filename);
+blds3 = boxLabelDatastore(testingTable(:,2:end));
+testingds = combine(imds,blds);
 
-%% Generate datastores
-
-trainingDs = combine(imDsTrain, bbDsTrain);
-validationDs = combine(imDsValidation, bbDsValidation);
-testDs = combine(imDsTest, bbDsTest);
-
-%% Validate training set
-validateInputData(trainingDs);
-validateInputData(validationDs);
-validateInputData(testDs);
-
-%% Display example image
-data = read(trainingDs);
-I = data{1};
-bbox = data{2};
-annotatedImage = insertShape(I,"Rectangle",bbox);
-annotatedImage = imresize(annotatedImage,2);
-figure
-imshow(annotatedImage)
-
-%% Prep network and Augment Data
-%Input needs to bea multiple of 32, so 224 instead of 227
+%% Train Region Detector
 inputSize = [224 224 3];
+trainingDataForEstimation = transform(trainds,@(data)preprocessData(data,inputSize));
 
-rng("default")
-trainingDataForEstimation = transform(trainingDs,@(data)preprocessData(data,inputSize));
 numAnchors = 9;
 [anchors,meanIoU] = estimateAnchorBoxes(trainingDataForEstimation,numAnchors);
 area = anchors(:, 1).*anchors(:,2);
@@ -84,41 +67,87 @@ anchors = anchors(idx,:);
 anchorBoxes = {anchors(1:3,:)
     anchors(4:6,:)
     anchors(7:9,:)
-    };
-detector = yolov4ObjectDetector("csp-darknet53-coco",unique(shuffledLabels),anchorBoxes,InputSize=inputSize);
-augmentedTrainingData = transform(trainingDs,@augmentData);
-augmentedData = cell(4,1);
-for k = 1:4
-    data = read(augmentedTrainingData);
-    augmentedData{k} = insertShape(data{1},"rectangle",data{2});
-    reset(augmentedTrainingData);
-end
-figure
+};
 
-montage(augmentedData,BorderSize=10)
+detector = yolov4ObjectDetector("csp-darknet53-coco",{'logo'},anchorBoxes,InputSize=inputSize);
 
 options = trainingOptions("adam",...
     GradientDecayFactor=0.9,...
     SquaredGradientDecayFactor=0.999,...
-    InitialLearnRate=0.001,...
+    InitialLearnRate=0.0001,...
     LearnRateSchedule="none",...
-    MiniBatchSize=64,...
+    MiniBatchSize=16,...
     L2Regularization=0.0005,...
-    MaxEpochs=1,...
+    MaxEpochs=5,...
     BatchNormalizationStatistics="moving",...
     DispatchInBackground=true,...
     ResetInputNormalization=false,...
     Shuffle="every-epoch",...
-    VerboseFrequency=20,...
-    ValidationFrequency=100,...
+    VerboseFrequency=50,...
+    ValidationFrequency=500,...
     CheckpointPath=tempdir,...
-    ValidationData=validationDs);
+    Plots="training-progress",...
+    ValidationData=validationds);
+
+%trainedDetector = trainYOLOv4ObjectDetector(trainds,detector,options);
+
+%% Display Example Image
+
+I = imread(shuffledFiles{numTrain + 2, 1});
+[bboxes, scores, labels] = detect(trainedDetector,I,Threshold=0.1);
+
+label_str = cell(length(labels),1);
+for i = 1:length(labels)
+    label_str{i} = ['Confidence: ' num2str(scores(i), '%0.2f') '%'];
+end
+
+detectedImg = insertObjectAnnotation(I,"Rectangle",bboxes,label_str);
+figure
+imshow(detectedImg)
+
+%% Save data
+save("RegionData.mat")
+
+%% Train Classifier
+
+net = alexnet;
+inputSize = net.Layers(1).InputSize;
+layersTransfer = net.Layers(1:end-3);
+[~, classes, ~] = fileparts(trainds.UnderlyingDatastores{1, 1}.Folders);
+numClasses = numel(classes);
+
+layers = [
+    layersTransfer
+    fullyConnectedLayer(numClasses,'WeightLearnRateFactor', 15,'BiasLearnRateFactor', 15)
+    softmaxLayer
+    classificationLayer];
+
+imds4 = transform(trainds.UnderlyingDatastores{1, 1}, trainds.UnderlyingDatastores{1, 2}, @cropFcn);
+imds5 = transform(validationds.UnderlyingDatastores{1, 1}, validationds.UnderlyingDatastores{1, 2}, @cropFcn);
 
 
-%% Train the Network
-[detector,info] = trainYOLOv4ObjectDetector(augmentedTrainingData,detector,options);
+pixelRange = [-30 30];
+imageAugmenter = imageDataAugmenter('RandXTranslation', pixelRange, 'RandYTranslation', pixelRange);
+augimdsTrain = augmentedImageDatastore(inputSize(1:2), imds4.UnderlyingDatastores{1, 1}, 'DataAugmentation', imageAugmenter);
 
-%% Creates helper functions from example online
+augimdsValidation = augmentedImageDatastore(inputSize(1:2), validationds.UnderlyingDatastores{1, 1});
+
+options = trainingOptions('sgdm', ...
+    'MiniBatchSize', 32, ...
+    'MaxEpochs', 2, ...
+    'InitialLearnRate',1e-4, ...
+    'Shuffle','every-epoch', ...
+    'ValidationData', augimdsValidation, ...
+    'ValidationFrequency', 100, ...
+    'Verbose',false, ...
+    'Plots','training-progress');
+
+netTransfer = trainNetwork(augimdsTrain, layers, options);
+
+save("classifier.mat")
+
+
+%% Helper Functions
 function data = augmentData(A)
 % Apply random horizontal flipping, and random X/Y scaling. Boxes that get
 % scaled outside the bounds are clipped if the overlap is above 0.25. Also,
@@ -324,28 +353,28 @@ end
 function data = readXML(filename) 
 
     xml = readstruct(filename).object.bndbox;
-    %xcenter = (xml.xmax + xml.xmin)/2;
-    %ycenter = (xml.ymax + xml.ymin)/2;
+    xmin = xml.xmin;
+    ymin = xml.ymin;
     width = xml.xmax - xml.xmin;
     height = xml.ymax - xml.ymin;
 
-    data = [xml.xmin xml.ymin width height];
-
-end
-
-
-function lowestLevelFolders = getLowestLevelFolders(filePaths)
-    numFiles = numel(filePaths);
-    lowestLevelFolders = cell(1, numFiles);
-
-    for i = 1:numFiles
-        [path, ~, ~] = fileparts(filePaths{i});
-        [~, folderName, ~] = fileparts(path)
-        %folderParts = strsplit(folderName, filesep);
-        lowestLevelFolders{i} = folderName;
+    if xmin == 0
+        xmin = 1;
     end
+    if ymin == 0
+        ymin = 1;
+    end
+
+    data = [xmin ymin width height];
+
 end
 
+function out = cropFcn(image, rect)
+    padding = 20;
+    newRect = [rect(1) - padding; rect(2) - padding; rect(3) + padding * 2; rect(4) + padding * 2];
+    data = imcrop(image, newRect); % Note, this might need to be modified slightly if image and rect are cells.
+    out = {data rect}; % Add the bounding boxes back to the result if you want it.
+end
 
 
 
