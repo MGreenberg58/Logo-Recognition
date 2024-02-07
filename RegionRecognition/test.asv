@@ -21,6 +21,7 @@ shuffledFiles = imds.Files(perm);
 % Calculate the number of files for each split
 numTrain = round(0.6 * numFiles);
 numValidation = round(0.1 * numFiles);
+numTesting = numFiles - numTrain - numValidation;
 
 bbds = fileDatastore(filePath, "ReadFcn", @readXML, "IncludeSubfolders", true, "FileExtensions", [".xml"]);
 
@@ -78,7 +79,7 @@ options = trainingOptions("adam",...
     LearnRateSchedule="none",...
     MiniBatchSize=16,...
     L2Regularization=0.0005,...
-    MaxEpochs=5,...
+    MaxEpochs=8,...
     BatchNormalizationStatistics="moving",...
     DispatchInBackground=true,...
     ResetInputNormalization=false,...
@@ -89,7 +90,7 @@ options = trainingOptions("adam",...
     Plots="training-progress",...
     ValidationData=validationds);
 
-%trainedDetector = trainYOLOv4ObjectDetector(trainds,detector,options);
+trainedDetector = trainYOLOv4ObjectDetector(trainds,detector,options);
 
 %% Display Example Image
 
@@ -106,15 +107,25 @@ figure
 imshow(detectedImg)
 
 %% Save data
-save("RegionData.mat")
+save("datector.mat")
 
 %% Train Classifier
+imds4 = imageDatastore("E:\Logos\CroppedCleaned", "IncludeSubfolders", true, "LabelSource", "foldernames");
+
+perm = randperm(numel(imds4.Files));
+shuffledFiles = imds4.Files(perm);
+
+numTrain = round(0.7 * numel(imds4.Files));
+
+alexTrain = imageDatastore(shuffledFiles(1:numTrain), "IncludeSubfolders", true, "LabelSource", "foldernames");
+alexValidation = imageDatastore(shuffledFiles(numTrain+1:end), "IncludeSubfolders", true, "LabelSource", "foldernames");
 
 net = alexnet;
 inputSize = net.Layers(1).InputSize;
 layersTransfer = net.Layers(1:end-3);
-[~, classes, ~] = fileparts(trainds.UnderlyingDatastores{1, 1}.Folders);
-numClasses = numel(classes);
+[parent, ~, ~] = fileparts(imds4.Files);
+[~, classes, ~] = fileparts(parent);
+numClasses = numel(unique(classes));
 
 layers = [
     layersTransfer
@@ -122,31 +133,71 @@ layers = [
     softmaxLayer
     classificationLayer];
 
-imds4 = transform(trainds.UnderlyingDatastores{1, 1}, trainds.UnderlyingDatastores{1, 2}, @cropFcn);
-imds5 = transform(validationds.UnderlyingDatastores{1, 1}, validationds.UnderlyingDatastores{1, 2}, @cropFcn);
-
-
-
 pixelRange = [-30 30];
 imageAugmenter = imageDataAugmenter('RandXTranslation', pixelRange, 'RandYTranslation', pixelRange);
-augimdsTrain = augmentedImageDatastore(inputSize(1:2), imds4.UnderlyingDatastores{1, 1}, 'DataAugmentation', imageAugmenter);
+augimdsTrain = augmentedImageDatastore(inputSize(1:2), alexTrain, 'DataAugmentation', imageAugmenter);
 
-augimdsValidation = augmentedImageDatastore(inputSize(1:2), validationds.UnderlyingDatastores{1, 1});
+augimdsValidation = augmentedImageDatastore(inputSize(1:2), alexValidation);
 
 options = trainingOptions('sgdm', ...
-    'MiniBatchSize', 32, ...
-    'MaxEpochs', 2, ...
+    'MiniBatchSize', 64, ...
+    'MaxEpochs', 15, ...
     'InitialLearnRate',1e-4, ...
     'Shuffle','every-epoch', ...
-    'ValidationData', augimdsValidation, ...
-    'ValidationFrequency', 100, ...
     'Verbose',false, ...
-    'Plots','training-progress');
+    'Plots','training-progress', ...
+    ValidationFrequency=250, ...
+    ValidationData=augimdsValidation);
 
 netTransfer = trainNetwork(augimdsTrain, layers, options);
 
 save("classifier.mat")
 
+%% Get results
+
+%bboxResults = detect(trainedDetector, testingds);
+%metrics = evaluateObjectDetection(bboxResults, testingds);
+%classID = 1;
+%precision = metrics.ClassMetrics.Precision{classID};
+%recall = metrics.ClassMetrics.Recall{classID};
+
+predicted = {};
+actual = {};
+
+for i = 1:numTesting
+    file = testingds.UnderlyingDatastores{1, 1}.Files{i, 1};
+    img = imread(file);
+    [boxes, scores] = detect(trainedDetector, img);
+
+    if numel(scores) == 1
+        imgs = imcrop(img, boxes);
+    else
+        for j = 1:numel(scores)
+            imgs = imcrop(img, boxes(j, 1:4));
+        end
+    end
+
+    [YPred, score] = classify(netTransfer, imresize(imgs, [227, 227]));
+
+    [parent, ~, ~] = fileparts(file);
+    [~, class, ~] = fileparts(parent);
+
+    predicted = [predicted; YPred];
+    actual = [actual; class];
+end
+
+good = numel(predicted(predicted == actual));
+
+acc = good / numel(predicted);
+
+%% Display Results
+
+figure
+plot(recall,precision)
+xlabel("Recall")
+ylabel("Precision")
+grid on
+title(sprintf("Average Precision = %.2f",metrics.ClassMetrics.mAP(classID)))
 
 %% Helper Functions
 function data = augmentData(A)
@@ -251,14 +302,13 @@ if(any(~validImgs))
     msg = (imErrMsg + newline + newline);
 end
 
-%if(any(~validBoxes))
-    %imPaths = info(~validBoxes);
-    %str = strjoin(imPaths, '\n');
-    %boxErrMsg = sprintf("Bounding box data must be M-by-4 matrices of positive integer values. The following images have invalid bounding box data:\n") ...
-        %+ str;
+if(any(~validBoxes))
+    imPaths = info(~validBoxes);
+    str = strjoin(imPaths, '\n');
+   boxErrMsg = sprintf("Bounding box data must be M-by-4 matrices of positive integer values. The following images have invalid bounding box data:\n") + str;
     
-    %msg = (msg + boxErrMsg + newline + newline);
-%end
+    msg = (msg + boxErrMsg + newline + newline);
+end
 
 if(any(~validLabels))
     imPaths = info(~validLabels);
@@ -369,14 +419,6 @@ function data = readXML(filename)
     data = [xmin ymin width height];
 
 end
-
-function out = cropFcn(image, rect)
-    padding = 20;
-    newRect = [rect(1) - padding; rect(2) - padding; rect(3) + padding * 2; rect(4) + padding * 2];
-    data = imcrop(image, newRect); % Note, this might need to be modified slightly if image and rect are cells.
-    out = {data rect}; % Add the bounding boxes back to the result if you want it.
-end
-
 
 
 

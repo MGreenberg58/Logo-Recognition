@@ -1,0 +1,44 @@
+inputDir = "E:\Logos\LogoDet-3K\Transportation";
+outputDir = "E:\Logos\Cropped";
+
+bbds = fileDatastore(inputDir, "ReadFcn", @readXML, "IncludeSubfolders", true, "FileExtensions", [".xml"]);
+bboxes = readall(bbds);
+imageFiles = dir(fullfile(inputDir, '*.png')); 
+
+% Load bounding boxes from a cell array 
+for i = 1:numel(imageFiles)
+    bboxes{i} = [x1, y1, width, height];  
+end
+
+% Create output directory if it does not exist
+if ~exist(outputDir, 'dir')
+    mkdir(outputDir);
+end
+
+% Process each image and save the cropped version
+for i = 1:numel(imageFiles)
+    % Read the original image
+    imagePath = fullfile(inputDir, imageFiles(i).name);
+    originalImage = imread(imagePath);
+
+    % Get the bounding box for the current image
+    rect = boundingBoxes{i};
+
+    box = [rect(1) - padding; rect(2) - padding; rect(3) + padding * 2; rect(4) + padding * 2];
+
+    % Crop the image based on the bounding box
+    croppedImage = imcrop(originalImage, box);
+
+    % Create the subfolder structure in the output directory
+    [~, imageName, ~] = fileparts(imageFiles(i).name);
+    outputSubDir = fullfile(outputDir, fileparts(imageFiles(i).folder(inputDir)));
+    if ~exist(outputSubDir, 'dir')
+        mkdir(outputSubDir);
+    end
+
+    % Save the cropped image to the output directory
+    outputImagePath = fullfile(outputSubDir, [imageName, '_cropped.png']);
+    imwrite(croppedImage, outputImagePath);
+end
+
+disp('Image cropping and saving completed.');
