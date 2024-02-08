@@ -95,7 +95,7 @@ trainedDetector = trainYOLOv4ObjectDetector(trainds,detector,options);
 %% Display Example Image
 
 I = imread(shuffledFiles{numTrain + 2, 1});
-[bboxes, scores, labels] = detect(trainedDetector,I,Threshold=0.1);
+[bboxes, scores, labels] = detect(trainedDetector,I,Threshold=0.05);
 
 label_str = cell(length(labels),1);
 for i = 1:length(labels)
@@ -120,18 +120,18 @@ numTrain = round(0.7 * numel(imds4.Files));
 alexTrain = imageDatastore(shuffledFiles(1:numTrain), "IncludeSubfolders", true, "LabelSource", "foldernames");
 alexValidation = imageDatastore(shuffledFiles(numTrain+1:end), "IncludeSubfolders", true, "LabelSource", "foldernames");
 
-net = alexnet;
+net = resnet50;
 inputSize = net.Layers(1).InputSize;
 layersTransfer = net.Layers(1:end-3);
 [parent, ~, ~] = fileparts(imds4.Files);
 [~, classes, ~] = fileparts(parent);
 numClasses = numel(unique(classes));
 
-layers = [
-    layersTransfer
-    fullyConnectedLayer(numClasses,'WeightLearnRateFactor', 15,'BiasLearnRateFactor', 15)
-    softmaxLayer
-    classificationLayer];
+lgraph = layerGraph(net);
+
+lgraph = replaceLayer(lgraph, 'fc1000', fullyConnectedLayer(numClasses,'WeightLearnRateFactor', 15,'BiasLearnRateFactor', 15));
+lgraph = replaceLayer(lgraph, 'fc1000_softmax', softmaxLayer);
+lgraph = replaceLayer(lgraph, 'ClassificationLayer_fc1000', classificationLayer);
 
 pixelRange = [-30 30];
 imageAugmenter = imageDataAugmenter('RandXTranslation', pixelRange, 'RandYTranslation', pixelRange);
@@ -141,7 +141,7 @@ augimdsValidation = augmentedImageDatastore(inputSize(1:2), alexValidation);
 
 options = trainingOptions('sgdm', ...
     'MiniBatchSize', 64, ...
-    'MaxEpochs', 15, ...
+    'MaxEpochs', 25, ...
     'InitialLearnRate',1e-4, ...
     'Shuffle','every-epoch', ...
     'Verbose',false, ...
@@ -149,7 +149,7 @@ options = trainingOptions('sgdm', ...
     ValidationFrequency=250, ...
     ValidationData=augimdsValidation);
 
-netTransfer = trainNetwork(augimdsTrain, layers, options);
+netTransfer = trainNetwork(augimdsTrain, lgraph, options);
 
 save("classifier.mat")
 
@@ -161,32 +161,53 @@ save("classifier.mat")
 %precision = metrics.ClassMetrics.Precision{classID};
 %recall = metrics.ClassMetrics.Recall{classID};
 
-predicted = {};
-actual = {};
+predicted = cell(numTesting, 1);
+actual = cell(numTesting, 1);
+countBad = 0;
+
+numTesting = numFiles - numTrain - numValidation;
 
 for i = 1:numTesting
+
     file = testingds.UnderlyingDatastores{1, 1}.Files{i, 1};
     img = imread(file);
-    [boxes, scores] = detect(trainedDetector, img);
+    [boxes, scores, labels] = detect(trainedDetector, img, Threshold=0.05);
 
-    if numel(scores) == 1
-        imgs = imcrop(img, boxes);
-    else
-        for j = 1:numel(scores)
-            imgs = imcrop(img, boxes(j, 1:4));
-        end
-    end
-
-    [YPred, score] = classify(netTransfer, imresize(imgs, [227, 227]));
+    numBoxes = numel(scores);
 
     [parent, ~, ~] = fileparts(file);
     [~, class, ~] = fileparts(parent);
 
-    predicted = [predicted; YPred];
-    actual = [actual; class];
+    newPred = cell(numel(scores), 1);
+    for j = 1:numel(scores)
+        image = imcrop(img, boxes(j, 1:4));
+
+        [YPred, score] = classify(netTransfer, imresize(image, [224, 224]));
+        newPred(j) = cellstr(YPred);
+    end
+
+    if (numBoxes == 0)
+        countBad = countBad + 1;
+        continue
+    end
+
+    [uniqueStrings, ~, idx] = unique(newPred);
+    modeIndex = mode(idx); %find most common
+    mostFrequent = uniqueStrings(modeIndex);
+
+    parts = strsplit(mostFrequent{1, '-');
+    truncated = [parts{1}, '-'];
+
+    predicted{i} =  truncated;
+
+    parts = strsplit(class, '-');
+    truncated = [parts{1}, '-'];
+    
+    actual{i} = truncated;
+
 end
 
-good = numel(predicted(predicted == actual));
+good = sum(cellfun(@(x, y) strcmp(x, y), predicted, actual));
 
 acc = good / numel(predicted);
 
