@@ -1,4 +1,4 @@
-%ds = datastore(fullfile("E:\Logos"), "IncludeSubfolders", true, "Type", "image", "FileExtensions", ".jpg", 'LabelSource', 'foldernames');
+ds = datastore(fullfile("E:\Logos\LogoDet-3K\Transportation\"), "IncludeSubfolders", true, "Type", "image", "FileExtensions", ".jpg", 'LabelSource', 'foldernames');
 
 [dsTrain, dsValidation] = splitEachLabel(ds,0.9,'randomized');
 
@@ -43,7 +43,7 @@ options = trainingOptions('sgdm', ...
     'Plots','training-progress', ...
     'OutputNetwork', 'last-iteration');
 
-netTransfer = trainNetwork(augimdsTrain, lgraph, options);
+%netTransfer = trainNetwork(augimdsTrain, lgraph, options);
 
 [YPred,scores] = classify(netTransfer, augimdsValidation);
 

@@ -155,11 +155,11 @@ save("classifier.mat")
 
 %% Get results
 
-%bboxResults = detect(trainedDetector, testingds);
-%metrics = evaluateObjectDetection(bboxResults, testingds);
-%classID = 1;
-%precision = metrics.ClassMetrics.Precision{classID};
-%recall = metrics.ClassMetrics.Recall{classID};
+bboxResults = detect(trainedDetector, testingds);
+metrics = evaluateObjectDetection(bboxResults, testingds);
+classID = 1;
+precision = metrics.ClassMetrics.Precision{classID};
+recall = metrics.ClassMetrics.Recall{classID};
 
 predicted = cell(numTesting, 1);
 actual = cell(numTesting, 1);
@@ -195,7 +195,7 @@ for i = 1:numTesting
     modeIndex = mode(idx); %find most common
     mostFrequent = uniqueStrings(modeIndex);
 
-    parts = strsplit(mostFrequent{1, '-');
+    parts = strsplit(mostFrequent{1, 1}, '-');
     truncated = [parts{1}, '-'];
 
     predicted{i} =  truncated;
@@ -212,7 +212,8 @@ good = sum(cellfun(@(x, y) strcmp(x, y), predicted, actual));
 acc = good / numel(predicted);
 
 %% Display Results
-
+metrics.ClassMetrics.Precision
+(2 * mean(metrics.ClassMetrics.Precision) * mean(metrics.ClassMetrics.Recall)) / (mean(metrics.ClassMetrics.Precision) + mean(metrics.ClassMetrics.Recall))
 figure
 plot(recall,precision)
 xlabel("Recall")
