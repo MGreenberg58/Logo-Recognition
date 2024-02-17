@@ -1,0 +1,54 @@
+train: "E:/Logos/Images/train/"
+val:  "E:/Logos/Images/val/"
+test: "E:/Logos/Images/test/"
+
+# Parameters
+nc: 197 # number of classes
+depth_multiple: 0.33 # model depth multiple
+width_multiple: 0.50 # layer channel multiple
+anchors:
+  - [10, 13, 16, 30, 33, 23] # P3/8
+  - [30, 61, 62, 45, 59, 119] # P4/16
+  - [116, 90, 156, 198, 373, 326] # P5/32
+
+# YOLOv5 v6.0 backbone
+backbone:
+  # [from, number, module, args]
+  [
+    [-1, 1, Conv, [64, 6, 2, 2]], # 0-P1/2
+    [-1, 1, Conv, [128, 3, 2]], # 1-P2/4
+    [-1, 3, C3, [128]],
+    [-1, 1, Conv, [256, 3, 2]], # 3-P3/8
+    [-1, 6, C3, [256]],
+    [-1, 1, Conv, [512, 3, 2]], # 5-P4/16
+    [-1, 9, C3, [512]],
+    [-1, 1, Conv, [1024, 3, 2]], # 7-P5/32
+    [-1, 3, C3, [1024]],
+    [-1, 1, SPPF, [1024, 5]], # 9
+  ]
+
+# YOLOv5 v6.0 head
+head: [
+    [-1, 1, Conv, [512, 1, 1]],
+    [-1, 1, nn.Upsample, [None, 2, "nearest"]],
+    [[-1, 6], 1, Concat, [1]], # cat backbone P4
+    [-1, 3, C3, [512, False]], # 13
+
+    [-1, 1, Conv, [256, 1, 1]],
+    [-1, 1, nn.Upsample, [None, 2, "nearest"]],
+    [[-1, 4], 1, Concat, [1]], # cat backbone P3
+    [-1, 3, C3, [256, False]], # 17 (P3/8-small)
+
+    [-1, 1, Conv, [256, 3, 2]],
+    [[-1, 14], 1, Concat, [1]], # cat head P4
+    [-1, 3, C3, [512, False]], # 20 (P4/16-medium)
+
+    [-1, 1, Conv, [512, 3, 2]],
+    [[-1, 10], 1, Concat, [1]], # cat head P5
+    [-1, 3, C3, [1024, False]], # 23 (P5/32-large)
+
+    [[17, 20, 23], 1, Detect, [nc, anchors]], # Detect(P3, P4, P5)
+  ]
+
+# class names
+names: ['ac_propulsion', 'Air_Choice_One_Airlines', 'akurra', 'Ameriflight', 'Amerijet_International', 'Ameristar_Air_Cargo', 'ANCAP', 'Aprilia', 'arrinera', 'artega', 'Atala', 'atlas_air', 'Autovox', 'batavus', 'Benelli', 'Bentley', 'Bertone', 'Bharat_Petroleum', 'bhpetrol', 'Bi', 'bianchi', 'bike_friday', 'bilenky', 'Bilisten', 'BMC', 'BMW', 'boardman_bikes', 'bobcat', 'bolwell', 'bottecchia', 'Bridgestone', 'Brilliance', 'british_eagle', 'brodie_bicycles', 'brompton_bicycle', 'Brooks_Saddle', 'BUGATTI', 'Caloi', 'campion_cycle', 'Cannondale', 'canyon_bicycles', 'Caparo', 'cape_air', 'cervelo', "chang'an", 'chautauqua_airlines', 'Chery', 'Chevrolet', 'Chevron', 'Cimc', 'Citgo', 'Citroen', 'Colnago', 'Comfort', 'Condor', 'Conoco', 'Continental', 'Copec', 'Dacia', 'Daewoo', 'Ecopetrol', 'Embraer', 'EMS', 'Era_Alaska', 'Esso', 'Executive_Airlines', 'ExxonMobil', 'gary_fisher', 'gendron_bicycles', 'Genesis', 'ginetta', 'gitane', 'gleagle', 'GMC', 'gnome_et_rhone', 'gocycle', 'grand_sport', 'guerciotti', 'Gulf_Oil', 'gumpert', 'haro_bikes', 'Hascol_Petroleum', 'hase_bikes', 'Heinkel', 'hetchins', 'hongqi', 'huffy', 'Huntsville_International_Airport', 'Husqvarna', 'hutchinson_tires', 'Hyundai', 'ideagro', 'Ideal_Bikes', 'ikco', 'independent_fabrication', 'Infiniti', 'intercity', 'iron_horse_bicycles', 'isdera', 'islabikes', 'Isuzu', 'ITS', 'jamis_bicycles', 'jinbei', 'Kaipan', 'kia_da', 'KTM', 'Kuota', 'Kuwahara', 'Lada', 'Lamborghini', 'lambretta', 'Lancia', 'Landwind', 'land_rover', 'Lapierre', 'levante', 'lexus', 'lifan', 'Los_Angeles_International_Airport', 'Lotus_Cars', 'Luxgen', 'Magna', 'Mahindra', 'malvern_star', 'marin_bikes', 'maruishi', 'Marussia', 'Maserati', 'masi_bicycles', 'maxxis', 'maybach', 'Mazda', 'mclaren', 'MDX', 'merckx', 'merida_bikes', 'misc_berhad', 'mitsuoka', 'moots_cycles', 'muddy_fox', 'munro', 'mylch', 'nataraj', 'opel', 'pacific_pride', 'pakistan_oilfields', 'pakistan_state', 'pakistan_state_oil', 'panaracer', 'petro', 'petron', 'phillips_cycles', 'phillips_petroleum', 'pinarello', 'pogliaghi', 'pontiac', 'quintana_roo', 'r', 'racetrac', 'ram', 'ranch_hand', 'rft', 'ridley', 'riese_und_muller', 'rimac', 'roadmaster', 'rockshox', 'roewe', 'rowbike', 's', 'saab', 'saipa', 'saracen_cycles', 'scalextric', 'scania', 'sdlg', 'sealink', 'seaoil_philippines', 'seat', 'sentra', 'shell_v', 'sisu', 'ski', 'speedway_llc', 'supertest_petroleum', 'tempra', 'terpel', 'toyota', 'upland', 'venko', 'viper', 'vw', 'yutong', 'zamboni']
